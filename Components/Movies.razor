@@ -1,0 +1,121 @@
+﻿@page "/movies"
+@using BlazorMovieApp.Models
+@using BlazorMovieApp.Services
+@using BlazorMovieApp.Data
+@using System.Data.Entity
+@using Microsoft.AspNetCore.Identity
+@inject IMovieDbService service
+@inject IJSRuntime jsRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<IdentityUser> UserManager
+
+<h1>Movie Database</h1>
+
+<AuthorizeView>
+    <Authorized>
+        @if (movies == null)
+        {
+            <p><em>Loading...</em></p>
+        }
+        else
+        {
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Release Date</th>
+                        <th>Genre</th>
+                        <th>Director</th>
+                        <th>Running Time</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var movie in movies)
+                    {
+                        <tr>
+                            <td>@movie.Title</td>
+                            <td>@movie.ReleaseDate</td>
+                            <td>@movie.Genre</td>
+                            <td>@movie.Director</td>
+                            <td>@movie.RunningTime</td>
+                            <td><input type="button" class="btn btn-primary" value="Edit" data-toggle="modal" data-target="#movieModal" @onclick="(()=>LoadForEdit(movie))" /></td>
+                            <td><input type="button" class="btn btn-danger" value="Delete" data-toggle="modal" data-target="#confirmDeleteModal" @onclick="(()=>PrepareForDelete(movie))" /></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        <div>
+            <input type="button" data-toggle="modal" data-target="#movieModal" class="btn btn-primary" value="Add Movie" @onclick="(()=>LoadMovieModalWithCurrentDate())" />
+        </div>
+
+        <MovieDetail MovieObject="movieObject" OnSave="@GetUserDetails">
+            <CustomHeader>@customTitle</CustomHeader>
+        </MovieDetail>
+        <ConfirmDelete OnClick="@DeleteMovie" />
+    </Authorized>
+    <NotAuthorized>
+        <p> You are not authorized to view this page unless logged in!</p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<Movie> movies;
+    Movie movieObject = new Movie();
+    string customTitle = string.Empty;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        await GetUserDetails();
+    }
+    private void LoadMovieModalWithCurrentDate()
+    {
+        movieObject = new Movie();
+        movieObject.ReleaseDate = DateTime.Now;
+        customTitle = "Add New Movie";
+    }
+    private async Task<List<Movie>> Refreshed()
+    {
+        movies = await service.GetMovies();
+        return movies;
+    }
+    private void LoadForEdit(Movie movie)
+    {
+        movieObject = movie;
+        customTitle = "Edit Movie";
+    }
+    private void PrepareForDelete(Movie movie)
+    {
+        movieObject = movie;
+    }
+    private async Task DeleteMovie()
+    {
+        var movie = await service.DeleteMovie(movieObject.Id);
+        await jsRuntime.InvokeAsync<object>("HideModal", "confirmDeleteModal");
+        await GetUserDetails();
+    }
+
+     private async Task GetUserDetails()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity.IsAuthenticated)
+        {
+            var currentUser = await UserManager.GetUserAsync(user);
+
+            var currentUserId = currentUser.Id;
+
+            movies = await service.GetMoviesForUser(currentUserId);
+
+        }
+
+    } 
+
+
+
+}
