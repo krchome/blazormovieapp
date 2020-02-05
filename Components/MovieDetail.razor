@@ -1,0 +1,89 @@
+﻿@using BlazorMovieApp.Data
+@using BlazorMovieApp.Services
+@using BlazorMovieApp.Models
+@using  Microsoft.AspNetCore.Identity
+@inject IMovieDbService service
+@inject IJSRuntime jsRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<IdentityUser> UserManager
+
+
+<div class="modal" tabindex="-1" id="movieModal">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">@CustomHeader</h5>
+                <button type="button" class="close" data-dismiss="modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <EditForm Model="@MovieObject" OnValidSubmit="@HandleValidSubmit">
+                    <div class="form-group">
+                        <label for="movieTitle">Title</label>
+                        <input type="hidden" @bind-value="@MovieObject.Id" />
+                        <InputText id="Title" class="form-control" @bind-Value="@MovieObject.Title" />
+                        <ValidationMessage For="@(()=>MovieObject.Title)"></ValidationMessage>
+                    </div>
+                    <div class="form-group">
+                        <label for="movieReleaseDate">Release Date</label>
+                        <InputDate id="ReleaseDate" @bind-Value="@MovieObject.ReleaseDate" />
+                        <ValidationMessage For="@(()=>MovieObject.ReleaseDate)"></ValidationMessage>
+                    </div>
+                    <div class="form-group">
+                        <label for="movieGenre">Genre</label>
+                        <InputText id="Genre" class="form-control" @bind-Value="@MovieObject.Genre" />
+                        <ValidationMessage For="@(()=>MovieObject.Genre)"></ValidationMessage>
+                    </div>
+                    <div class="form-group">
+                        <label for="movieDirector">Director</label>
+                        <InputText id="Director" class="form-control" @bind-Value="@MovieObject.Director" />
+                        <ValidationMessage For="@(()=>MovieObject.Director)"></ValidationMessage>
+                    </div>
+                    <div class="form-group">
+                        <label for="movieRuntime">Running Time</label>
+                        <InputNumber id="RunningTime" class="form-control" @bind-Value="@MovieObject.RunningTime" />
+                        <ValidationMessage For="@(()=>MovieObject.RunningTime)"></ValidationMessage>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Submit</button>
+                    <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+                    <DataAnnotationsValidator />
+                    @*<ValidationSummary/>*@
+                </EditForm>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+
+    [Parameter]
+    public Movie MovieObject { get; set; }
+    [Parameter]
+    public EventCallback<Movie> OnSave { get; set; }
+    [Parameter]
+    public RenderFragment CustomHeader { get; set; }
+
+    private async Task HideTaskModal()
+    {
+        await jsRuntime.InvokeAsync<object>("HideModal", "movieModal");
+    }
+    private async void HandleValidSubmit()
+    {
+        if (MovieObject.Id == 0)
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = authState.User;
+            var currentUser = await UserManager.GetUserAsync(user);
+            var currentUserId = currentUser.Id;
+            MovieObject.OwnerID = currentUserId;
+            await service.AddMovie(MovieObject);
+        }
+        else
+        {
+            await service.EditMovie(MovieObject);
+        }
+
+
+        await HideTaskModal();
+        await OnSave.InvokeAsync(MovieObject);
+    }
+}

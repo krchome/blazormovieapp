@@ -1,0 +1,198 @@
+﻿@page "/movies"
+@using BlazorMovieApp.Models
+@using BlazorMovieApp.Services
+@using BlazorMovieApp.Data
+@using System.Data.Entity
+@using Microsoft.AspNetCore.Identity
+@inject IMovieDbService service
+@inject IJSRuntime jsRuntime
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<IdentityUser> UserManager
+
+<h1>Movie Database</h1>
+<div class="form-row align-items-center">
+    <div class="col-auto">
+        <div class="form-check mb-2">
+            <input id="forceException" type="checkbox" @bind="forceException" class="form-check-input" />
+            <label class="form-check-label" for="forceException">Force exception</label>
+        </div>
+    </div>
+    <div class="col-auto">
+        <button class="btn btn-primary mb-2" @onclick="LoadData">Retry</button>
+    </div>
+</div>
+
+<AuthorizeView>
+    <Authorized>
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Release Date</th>
+                        <th>Genre</th>
+                        <th>Director</th>
+                        <th>Running Time</th>
+                        <th>Edit</th>
+                        <th>Delete</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <BlazorPro.Spinkit.SpinLoader IsLoading="isLoading" IsFaulted="isFaulted">
+                        <LoadingTemplate>
+                            <tr>
+                                <td colspan="4" style="vertical-align: middle;background-color: rgb(0, 0, 0, .2); height:300px;">
+                                    <BlazorPro.Spinkit.Grid Color="#e67e22" Size="60px" Center="true" />
+                                </td>
+                            </tr>
+                        </LoadingTemplate>
+                        <ContentTemplate>
+                            @foreach (var movie in movies)
+                            {
+                                <tr>
+                                    <td>@movie.Title</td>
+                                    <td>@movie.ReleaseDate</td>
+                                    <td>@movie.Genre</td>
+                                    <td>@movie.Director</td>
+                                    <td>@movie.RunningTime</td>
+                                    <td><input type="button" class="btn btn-primary" value="Edit" data-toggle="modal" data-target="#movieModal" @onclick="(()=>LoadForEdit(movie))" /></td>
+                                    <td><input type="button" class="btn btn-danger" value="Delete" data-toggle="modal" data-target="#confirmDeleteModal" @onclick="(()=>PrepareForDelete(movie))" /></td>
+                                </tr>
+                            }
+                        </ContentTemplate>
+                        <FaultedContentTemplate>
+                            <tr>
+                                <td colspan="7">
+                                    <div class="alert alert-danger"><b>An exception occured - So no movies could be shown at this time!! Clear the checkbox and try again.</b></div>
+                                </td>
+                            </tr>
+                        </FaultedContentTemplate>
+                    </BlazorPro.Spinkit.SpinLoader>
+                </tbody>
+            </table>
+        
+        <div>
+            <input type="button" data-toggle="modal" data-target="#movieModal" class="btn btn-primary" value="Add Movie" @onclick="(()=>LoadMovieModalWithCurrentDate())" />
+        </div>
+
+        <MovieDetail MovieObject="movieObject" OnSave="@GetUserDetails">
+            <CustomHeader>@customTitle</CustomHeader>
+        </MovieDetail>
+        <ConfirmDelete OnClick="@DeleteMovie" />
+    </Authorized>
+    <NotAuthorized>
+        <p> You are not authorized to view this page unless logged in!</p>
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+    private List<Movie> movies;
+    Movie movieObject = new Movie();
+    string customTitle = string.Empty;
+    bool isFaulted = false;
+    bool isLoading = false;
+    int delay = 2000;
+    bool forceException = false;
+
+
+    protected override async Task OnInitializedAsync()
+    {
+
+        await LoadData();
+    }
+    async Task LoadData()
+    {
+        await TryLoadingData(
+            onSuccess: SuccessPath,
+            onFaulted: FaultedPath
+            );
+    }
+    void SuccessPath(List<Movie> data)
+    {
+        movies = data;
+
+    }
+    void FaultedPath(Exception ex)
+    {
+        var fakelog = ex.Message;
+    }
+    async Task TryLoadingData(Action<List<Movie>> onSuccess, Action<Exception> onFaulted)
+    {
+        isLoading = true;
+        await Task.Delay(delay);
+        try
+        {
+            if(forceException)
+            {
+                throw new NotSupportedException();
+            }
+            var data = await Task.Run(() => GetUserDetails());
+            isFaulted = false;
+            onSuccess(data);
+        }
+        catch(Exception ex)
+        {
+            isFaulted = true;
+            onFaulted(ex);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+
+
+
+
+    private void LoadMovieModalWithCurrentDate()
+    {
+        movieObject = new Movie();
+        movieObject.ReleaseDate = DateTime.Now;
+        customTitle = "Add New Movie";
+    }
+    private async Task<List<Movie>> Refreshed()
+    {
+        movies = await service.GetMovies();
+        return movies;
+    }
+    private void LoadForEdit(Movie movie)
+    {
+        movieObject = movie;
+        customTitle = "Edit Movie";
+    }
+    private void PrepareForDelete(Movie movie)
+    {
+        movieObject = movie;
+    }
+    private async Task DeleteMovie()
+    {
+        var movie = await service.DeleteMovie(movieObject.Id);
+        await jsRuntime.InvokeAsync<object>("HideModal", "confirmDeleteModal");
+        await GetUserDetails();
+    }
+
+    private async Task<List<Movie>> GetUserDetails()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+
+        if (user.Identity.IsAuthenticated)
+        {
+            var currentUser = await UserManager.GetUserAsync(user);
+
+            var currentUserId = currentUser.Id;
+
+            movies = await service.GetMoviesForUser(currentUserId);
+            return movies; 
+
+        }
+        else
+        {
+            return null;
+        }
+
+    }
+
+
+
+}
